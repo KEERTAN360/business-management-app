@@ -193,70 +193,96 @@ export function ProgressTracker() {
           </div>
 
           <div className="space-y-4">
-            {filteredProjects.map((project) => (
-              <Card key={project.id} className="p-6 bg-card border-border">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-lg font-semibold text-foreground">{project.name}</h3>
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(project.status)}`}>
-                        {project.status.replace("-", " ")}
-                      </span>
-                      <span className={`text-xs font-semibold uppercase ${getPriorityColor(project.priority)}`}>
-                        {project.priority}
-                      </span>
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-2">{project.description}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Team: {project.team} • Started: {project.startDate} • Due: {project.dueDate}
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="ghost" size="icon" onClick={() => setEditingProject(project)}>
-                      <Edit2 className="w-4 h-4 text-muted-foreground" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => removeProject(project.id)}>
-                      <Trash2 className="w-4 h-4 text-destructive" />
-                    </Button>
-                  </div>
-                </div>
+            {filteredProjects.map((project) => {
+              const allMilestonesCompleted = project.milestones && project.milestones.length > 0 && project.milestones.every(m => m.completed)
 
-                {/* Progress Bar */}
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Progress</span>
-                    <span className="text-sm font-semibold text-foreground">{project.progress}%</span>
-                  </div>
-                  <div className="w-full bg-muted rounded-full h-3">
-                    <div
-                      className="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all"
-                      style={{ width: `${project.progress}%` }}
-                    />
-                  </div>
-                </div>
-
-                {/* Milestones */}
-                <div className="mt-4 pt-4 border-t border-border">
-                  <p className="text-xs font-semibold text-muted-foreground mb-2">MILESTONES</p>
-                  <div className="flex gap-2 flex-wrap">
-                    {project.milestones.map((milestone) => (
-                      <div key={milestone.id} className="flex items-center gap-1 px-2 py-1 bg-muted rounded text-xs">
-                        {milestone.completed ? (
-                          <CheckCircle2 className="w-3 h-3 text-green-600" />
-                        ) : (
-                          <Calendar className="w-3 h-3 text-muted-foreground" />
-                        )}
-                        <span
-                          className={milestone.completed ? "line-through text-muted-foreground" : "text-foreground"}
-                        >
-                          {milestone.name}
+              return (
+                <Card key={project.id} className="p-6 bg-card border-border">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="text-lg font-semibold text-foreground">{project.name}</h3>
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(project.status)}`}>
+                          {project.status.replace("-", " ")}
+                        </span>
+                        <span className={`text-xs font-semibold uppercase ${getPriorityColor(project.priority)}`}>
+                          {project.priority}
                         </span>
                       </div>
-                    ))}
+                      <p className="text-sm text-muted-foreground mb-2">{project.description}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Team: {project.team} • Started: {project.startDate} • Due: {project.dueDate}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      {allMilestonesCompleted && project.status !== "completed" && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="bg-green-50 text-green-600 border-green-200 hover:bg-green-100 hover:text-green-700"
+                          onClick={() => {
+                            const updatedProject = { ...project, status: "completed" };
+                            fetch(`http://localhost:8080/api/projects/${project.id}`, {
+                              method: "PUT",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify(updatedProject)
+                            })
+                              .then(res => {
+                                if (res.ok) fetchProjects();
+                              })
+                              .catch(err => console.error("Failed to update project status", err));
+                          }}
+                        >
+                          <CheckCircle2 className="w-4 h-4 mr-1" />
+                          Mark Completed
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="icon" onClick={() => setEditingProject(project)}>
+                        <Edit2 className="w-4 h-4 text-muted-foreground" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => removeProject(project.id)}>
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              </Card>
-            ))}
+
+                  {/* Progress Bar */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-muted-foreground">Progress</span>
+                      <span className="text-sm font-semibold text-foreground">{project.progress}%</span>
+                    </div>
+                    <div className="w-full bg-muted rounded-full h-3">
+                      <div
+                        className="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all"
+                        style={{ width: `${project.progress}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Milestones */}
+                  <div className="mt-4 pt-4 border-t border-border">
+                    <p className="text-xs font-semibold text-muted-foreground mb-2">MILESTONES</p>
+                    <div className="flex gap-2 flex-wrap">
+                      {project.milestones.map((milestone) => (
+                        <div key={milestone.id} className="flex items-center gap-1 px-2 py-1 bg-muted rounded text-xs">
+                          {milestone.completed ? (
+                            <CheckCircle2 className="w-3 h-3 text-green-600" />
+                          ) : (
+                            <Calendar className="w-3 h-3 text-muted-foreground" />
+                          )}
+                          <span
+                            className={milestone.completed ? "line-through text-muted-foreground" : "text-foreground"}
+                          >
+                            {milestone.name}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </Card>
+              )
+            })}
           </div>
         </TabsContent>
 

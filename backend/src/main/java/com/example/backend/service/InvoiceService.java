@@ -5,6 +5,7 @@ import com.example.backend.model.Transaction;
 import com.example.backend.repository.InvoiceRepository;
 import com.example.backend.repository.TransactionRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -24,13 +25,13 @@ public class InvoiceService {
         return invoiceRepository.findAll();
     }
 
-    public Invoice createInvoice(Invoice invoice) {
+    public Invoice createInvoice(@NonNull Invoice invoice) {
         Invoice savedInvoice = invoiceRepository.save(invoice);
         syncTransaction(savedInvoice);
         return savedInvoice;
     }
 
-    public Invoice updateInvoiceStatus(Long id, String status) {
+    public Invoice updateInvoiceStatus(@NonNull Long id, String status) {
         return invoiceRepository.findById(id).map(invoice -> {
             invoice.setStatus(status);
             Invoice updatedInvoice = invoiceRepository.save(invoice);
@@ -39,7 +40,7 @@ public class InvoiceService {
         }).orElse(null);
     }
 
-    public void deleteInvoice(Long id) {
+    public void deleteInvoice(@NonNull Long id) {
         invoiceRepository.findById(id).ifPresent(invoice -> {
             if (invoice.getTransactionId() != null) {
                 transactionRepository.deleteById(invoice.getTransactionId());
@@ -48,7 +49,7 @@ public class InvoiceService {
         });
     }
 
-    private void syncTransaction(Invoice invoice) {
+    private void syncTransaction(@NonNull Invoice invoice) {
         Transaction transaction;
 
         if (invoice.getTransactionId() != null) {

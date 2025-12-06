@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -17,244 +17,296 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-  ScatterChart,
-  Scatter,
+  PieChart,
+  Pie,
+  Cell,
 } from "recharts"
-import { TrendingUp, TrendingDown, Filter } from "lucide-react"
+import { TrendingUp, TrendingDown, Filter, DollarSign, Briefcase, PieChart as PieChartIcon } from "lucide-react"
 
-const analyticsData = [
-  { date: "2025-01-01", pageViews: 2400, users: 1200, conversions: 240, bounce: 45 },
-  { date: "2025-01-02", pageViews: 1398, users: 1221, conversions: 221, bounce: 52 },
-  { date: "2025-01-03", pageViews: 9800, users: 2290, conversions: 229, bounce: 38 },
-  { date: "2025-01-04", pageViews: 3908, users: 2000, conversions: 200, bounce: 48 },
-  { date: "2025-01-05", pageViews: 4800, users: 2181, conversions: 500, bounce: 35 },
-  { date: "2025-01-06", pageViews: 3800, users: 2500, conversions: 250, bounce: 42 },
-]
+// Types matching Backend Models roughly
+type Transaction = {
+  id: number
+  description: string
+  amount: number
+  type: string // "income" | "expense"
+  category: string
+  status: string
+  date: string
+}
 
-const sourceData = [
-  { source: "Organic", users: 4200, revenue: 12600 },
-  { source: "Direct", users: 3100, revenue: 9300 },
-  { source: "Referral", users: 2800, revenue: 8400 },
-  { source: "Social", users: 2200, revenue: 6600 },
-  { source: "Paid", users: 1900, revenue: 5700 },
-]
+type Project = {
+  id: number
+  name: string
+  status: string // "on-track" | "at-risk" | "completed"
+  priority: string
+}
 
-const deviceData = [
-  { device: "Desktop", percentage: 55, users: 6270 },
-  { device: "Mobile", percentage: 35, users: 3990 },
-  { device: "Tablet", percentage: 10, users: 1140 },
-]
+type Budget = {
+  id: number
+  category: string
+  allocated: number
+  spent: number
+}
+
+const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8", "#82ca9d"]
 
 export function Analytics() {
-  const [timeRange, setTimeRange] = useState("week")
-  const [selectedMetric, setSelectedMetric] = useState("all")
+  const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [projects, setProjects] = useState<Project[]>([])
+  const [budgets, setBudgets] = useState<Budget[]>([])
+
+  useEffect(() => {
+    // Fetch all required data
+    const fetchData = async () => {
+      try {
+        const [txRes, projRes, budgRes] = await Promise.all([
+          fetch("http://localhost:8080/api/transactions"),
+          fetch("http://localhost:8080/api/projects"),
+          fetch("http://localhost:8080/api/budgets"),
+        ])
+
+        if (txRes.ok) setTransactions(await txRes.json())
+        if (projRes.ok) setProjects(await projRes.json())
+        if (budgRes.ok) setBudgets(await budgRes.json())
+      } catch (error) {
+        console.error("Failed to fetch analytics data", error)
+      }
+    }
+
+    fetchData()
+  }, [])
+
+  // --- Data Processing for Charts ---
+
+  // 1. Financial Overview (KPIs)
+  const totalIncome = transactions
+    .filter((t) => t.type.toLowerCase() === "income")
+    .reduce((sum, t) => sum + t.amount, 0)
+
+  const totalExpense = transactions
+    .filter((t) => t.type.toLowerCase() === "expense")
+    .reduce((sum, t) => sum + t.amount, 0)
+
+  const netProfit = totalIncome - totalExpense
+  const activeProjects = projects.filter((p) => p.status !== "completed").length
+
+  // 2. Financial Trends (Area Chart)
+  // Group by date, sum income and expense
+  const trendDataMap = new Map<string, { date: string; income: number; expense: number }>()
+
+  transactions.forEach((t) => {
+    const date = t.date;
+    if (!trendDataMap.has(date)) {
+      trendDataMap.set(date, { date, income: 0, expense: 0 })
+    }
+    const entry = trendDataMap.get(date)!
+    if (t.type.toLowerCase() === "income") entry.income += t.amount
+    else entry.expense += t.amount
+  })
+
+  const trendData = Array.from(trendDataMap.values()).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+
+  // 3. Expense by Category (Pie Chart)
+  const expenseCategoryMap = new Map<string, number>()
+  transactions
+    .filter(t => t.type.toLowerCase() === "expense")
+    .forEach(t => {
+      const current = expenseCategoryMap.get(t.category) || 0
+      expenseCategoryMap.set(t.category, current + t.amount)
+    })
+
+  const expenseCategoryData = Array.from(expenseCategoryMap.entries()).map(([name, value]) => ({ name, value }))
+
+
+  // 4. Project Status (Pie Chart)
+  const projectStatusMap = new Map<string, number>()
+  projects.forEach(p => {
+    const status = p.status || "Unknown"
+    projectStatusMap.set(status, (projectStatusMap.get(status) || 0) + 1)
+  })
+  const projectStatusData = Array.from(projectStatusMap.entries()).map(([name, value]) => ({ name, value }))
+
 
   return (
     <div className="p-8 space-y-8">
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-4xl font-bold text-foreground mb-2">Analytics & Data Analysis</h1>
-          <p className="text-muted-foreground">Track and analyze your business metrics in real-time.</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="gap-2 bg-transparent">
-            <Filter className="w-4 h-4" />
-            Filters
-          </Button>
+          <h1 className="text-4xl font-bold text-foreground mb-2">Analytics Dashboard</h1>
+          <p className="text-muted-foreground">Real-time insights into your business performance.</p>
         </div>
       </div>
 
-      {/* Time Range Selector */}
-      <div className="flex gap-2">
-        {["day", "week", "month", "year"].map((range) => (
-          <Button
-            key={range}
-            variant={timeRange === range ? "default" : "outline"}
-            size="sm"
-            onClick={() => setTimeRange(range)}
-            className="capitalize"
-          >
-            {range}
-          </Button>
-        ))}
-      </div>
-
-      {/* Metrics Cards */}
+      {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-6 bg-card border-border">
-          <div className="flex justify-between items-start">
+          <div className="flex justify-between items-center">
             <div>
-              <p className="text-sm text-muted-foreground mb-2">Total Page Views</p>
-              <p className="text-3xl font-bold text-foreground">26,706</p>
+              <p className="text-sm text-muted-foreground">Total Income</p>
+              <p className="text-2xl font-bold text-green-600">${totalIncome.toLocaleString()}</p>
             </div>
-            <TrendingUp className="w-5 h-5 text-green-600" />
+            <TrendingUp className="w-8 h-8 text-green-100 bg-green-600 p-1.5 rounded-full" />
           </div>
-          <p className="text-xs text-green-600 mt-2">+15.3% increase</p>
         </Card>
         <Card className="p-6 bg-card border-border">
-          <div className="flex justify-between items-start">
+          <div className="flex justify-between items-center">
             <div>
-              <p className="text-sm text-muted-foreground mb-2">Unique Users</p>
-              <p className="text-3xl font-bold text-foreground">11,391</p>
+              <p className="text-sm text-muted-foreground">Total Expenses</p>
+              <p className="text-2xl font-bold text-red-600">${totalExpense.toLocaleString()}</p>
             </div>
-            <TrendingUp className="w-5 h-5 text-green-600" />
+            <TrendingDown className="w-8 h-8 text-red-100 bg-red-600 p-1.5 rounded-full" />
           </div>
-          <p className="text-xs text-green-600 mt-2">+8.2% increase</p>
         </Card>
         <Card className="p-6 bg-card border-border">
-          <div className="flex justify-between items-start">
+          <div className="flex justify-between items-center">
             <div>
-              <p className="text-sm text-muted-foreground mb-2">Conversion Rate</p>
-              <p className="text-3xl font-bold text-foreground">3.2%</p>
+              <p className="text-sm text-muted-foreground">Net Profit</p>
+              <p className={`text-2xl font-bold ${netProfit >= 0 ? 'text-primary' : 'text-red-500'}`}>
+                ${netProfit.toLocaleString()}
+              </p>
             </div>
-            <TrendingUp className="w-5 h-5 text-green-600" />
+            <DollarSign className="w-8 h-8 text-primary-foreground bg-primary p-1.5 rounded-full" />
           </div>
-          <p className="text-xs text-green-600 mt-2">+0.5% increase</p>
         </Card>
         <Card className="p-6 bg-card border-border">
-          <div className="flex justify-between items-start">
+          <div className="flex justify-between items-center">
             <div>
-              <p className="text-sm text-muted-foreground mb-2">Avg. Bounce Rate</p>
-              <p className="text-3xl font-bold text-foreground">42.4%</p>
+              <p className="text-sm text-muted-foreground">Active Projects</p>
+              <p className="text-2xl font-bold text-foreground">{activeProjects}</p>
             </div>
-            <TrendingDown className="w-5 h-5 text-green-600" />
+            <Briefcase className="w-8 h-8 text-blue-100 bg-blue-600 p-1.5 rounded-full" />
           </div>
-          <p className="text-xs text-green-600 mt-2">-2.1% decrease</p>
         </Card>
       </div>
 
-      {/* Tabs for different analysis views */}
       <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="sources">Traffic Sources</TabsTrigger>
-          <TabsTrigger value="devices">Device Analysis</TabsTrigger>
-          <TabsTrigger value="advanced">Advanced</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-3 lg:w-[400px]">
+          <TabsTrigger value="overview">Financials</TabsTrigger>
+          <TabsTrigger value="projects">Projects</TabsTrigger>
+          <TabsTrigger value="budgets">Budgets</TabsTrigger>
         </TabsList>
 
-        {/* Overview Tab */}
+        {/* Financials Tab */}
         <TabsContent value="overview" className="space-y-6">
-          <Card className="p-6 bg-card border-border">
-            <h2 className="text-lg font-semibold text-foreground mb-4">Page Views Over Time</h2>
-            <ResponsiveContainer width="100%" height={300}>
-              <AreaChart data={analyticsData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis stroke="var(--muted-foreground)" dataKey="date" />
-                <YAxis stroke="var(--muted-foreground)" />
-                <Tooltip />
-                <Area type="monotone" dataKey="pageViews" fill="var(--chart-1)" stroke="var(--chart-1)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </Card>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Income vs Expense Trend */}
+            <Card className="p-6 bg-card border-border col-span-1 lg:col-span-2">
+              <h2 className="text-lg font-semibold text-foreground mb-4">Financial Trends</h2>
+              <div className="h-[300px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={trendData}>
+                    <defs>
+                      <linearGradient id="colorIncomeAnalytics" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#22c55e" stopOpacity={0.8} />
+                        <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="colorExpenseAnalytics" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8} />
+                        <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="date" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                    <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `$${value}`} />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#333" />
+                    <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }} />
+                    <Area type="monotone" dataKey="income" stroke="#22c55e" fillOpacity={1} fill="url(#colorIncomeAnalytics)" name="Income" />
+                    <Area type="monotone" dataKey="expense" stroke="#ef4444" fillOpacity={1} fill="url(#colorExpenseAnalytics)" name="Expense" />
+                    <Legend />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
 
-          <Card className="p-6 bg-card border-border">
-            <h2 className="text-lg font-semibold text-foreground mb-4">Key Metrics Comparison</h2>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={analyticsData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis stroke="var(--muted-foreground)" dataKey="date" />
-                <YAxis stroke="var(--muted-foreground)" />
-                <Tooltip />
-                <Legend />
-                <Line type="monotone" dataKey="pageViews" stroke="var(--chart-1)" strokeWidth={2} />
-                <Line type="monotone" dataKey="users" stroke="var(--chart-2)" strokeWidth={2} />
-                <Line type="monotone" dataKey="conversions" stroke="var(--chart-3)" strokeWidth={2} />
-              </LineChart>
-            </ResponsiveContainer>
-          </Card>
-        </TabsContent>
-
-        {/* Traffic Sources Tab */}
-        <TabsContent value="sources" className="space-y-6">
-          <Card className="p-6 bg-card border-border">
-            <h2 className="text-lg font-semibold text-foreground mb-4">Traffic by Source</h2>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={sourceData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis stroke="var(--muted-foreground)" dataKey="source" />
-                <YAxis stroke="var(--muted-foreground)" />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="users" fill="var(--chart-1)" />
-                <Bar dataKey="revenue" fill="var(--chart-2)" />
-              </BarChart>
-            </ResponsiveContainer>
-          </Card>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {sourceData.map((source) => (
-              <Card key={source.source} className="p-4 bg-card border-border">
-                <p className="text-sm text-muted-foreground mb-2">{source.source}</p>
-                <div className="flex justify-between items-end">
-                  <div>
-                    <p className="text-2xl font-bold text-foreground">{source.users}</p>
-                    <p className="text-xs text-muted-foreground">users</p>
+            {/* Expense Breakdown */}
+            <Card className="p-6 bg-card border-border">
+              <h2 className="text-lg font-semibold text-foreground mb-4">Expense Breakdown</h2>
+              <div className="h-[300px] w-full flex justify-center items-center">
+                {expenseCategoryData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={expenseCategoryData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        paddingAngle={5}
+                        dataKey="value"
+                      >
+                        {expenseCategoryData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }} />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="text-muted-foreground flex flex-col items-center">
+                    <PieChartIcon className="w-12 h-12 mb-2 opacity-20" />
+                    <p>No expense data available</p>
                   </div>
-                  <div className="text-right">
-                    <p className="text-lg font-semibold text-foreground">${source.revenue}</p>
-                    <p className="text-xs text-muted-foreground">revenue</p>
+                )}
+              </div>
+            </Card>
+            <Card className="p-6 bg-card border-border">
+              <h2 className="text-lg font-semibold text-foreground mb-4">Recent Transactions</h2>
+              <div className="space-y-4">
+                {transactions.slice(0, 5).map(t => (
+                  <div key={t.id} className="flex justify-between items-center border-b border-border pb-2 last:border-0">
+                    <div>
+                      <p className="font-medium">{t.description}</p>
+                      <p className="text-xs text-muted-foreground">{t.date}</p>
+                    </div>
+                    <span className={t.type === 'income' ? 'text-green-500 font-bold' : 'text-red-500 font-bold'}>
+                      {t.type === 'income' ? '+' : '-'}${t.amount}
+                    </span>
                   </div>
-                </div>
-              </Card>
-            ))}
+                ))}
+              </div>
+            </Card>
           </div>
         </TabsContent>
 
-        {/* Device Analysis Tab */}
-        <TabsContent value="devices" className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {deviceData.map((device) => (
-              <Card key={device.device} className="p-6 bg-card border-border">
-                <p className="text-sm text-muted-foreground mb-2">{device.device}</p>
-                <p className="text-3xl font-bold text-foreground">{device.percentage}%</p>
-                <p className="text-xs text-muted-foreground mt-2">{device.users} users</p>
-                <div className="mt-4 w-full bg-muted rounded-full h-2">
-                  <div className="bg-primary h-2 rounded-full" style={{ width: `${device.percentage}%` }} />
-                </div>
-              </Card>
-            ))}
-          </div>
-
+        {/* Projects Tab */}
+        <TabsContent value="projects" className="space-y-6">
           <Card className="p-6 bg-card border-border">
-            <h2 className="text-lg font-semibold text-foreground mb-4">Device Performance</h2>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={deviceData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis stroke="var(--muted-foreground)" dataKey="device" />
-                <YAxis stroke="var(--muted-foreground)" />
-                <Tooltip />
-                <Bar dataKey="users" fill="var(--chart-1)" />
-              </BarChart>
-            </ResponsiveContainer>
+            <h2 className="text-lg font-semibold text-foreground mb-4">Project Status Distribution</h2>
+            <div className="h-[350px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={projectStatusData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#333" />
+                  <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#8884d8" fontSize={12} tickLine={false} axisLine={false} />
+                  <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }} />
+                  <Bar dataKey="value" fill="#8884d8" radius={[4, 4, 0, 0]}>
+                    {projectStatusData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </Card>
         </TabsContent>
 
-        {/* Advanced Tab */}
-        <TabsContent value="advanced" className="space-y-6">
+        {/* Budgets Tab */}
+        <TabsContent value="budgets" className="space-y-6">
           <Card className="p-6 bg-card border-border">
-            <h2 className="text-lg font-semibold text-foreground mb-4">Bounce Rate Trend</h2>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={analyticsData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis stroke="var(--muted-foreground)" dataKey="date" />
-                <YAxis stroke="var(--muted-foreground)" />
-                <Tooltip />
-                <Line type="monotone" dataKey="bounce" stroke="var(--chart-4)" strokeWidth={2} />
-              </LineChart>
-            </ResponsiveContainer>
-          </Card>
-
-          <Card className="p-6 bg-card border-border">
-            <h2 className="text-lg font-semibold text-foreground mb-4">Conversion Correlation</h2>
-            <ResponsiveContainer width="100%" height={300}>
-              <ScatterChart data={analyticsData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis stroke="var(--muted-foreground)" dataKey="users" />
-                <YAxis stroke="var(--muted-foreground)" dataKey="conversions" />
-                <Tooltip />
-                <Scatter dataKey="conversions" fill="var(--chart-1)" />
-              </ScatterChart>
-            </ResponsiveContainer>
+            <h2 className="text-lg font-semibold text-foreground mb-4">Budget vs Spending</h2>
+            <div className="h-[400px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={budgets} layout="vertical" barGap={2} barSize={20}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={true} stroke="var(--border)" />
+                  <XAxis type="number" stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `$${value}`} />
+                  <YAxis type="category" dataKey="category" width={100} stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
+                  <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }} />
+                  <Legend />
+                  <Bar dataKey="allocated" name="Allocated Budget" fill="#3b82f6" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="spent" name="Actual Spent" fill="#ef4444" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </Card>
         </TabsContent>
       </Tabs>

@@ -10,6 +10,8 @@ import {
   Bar,
   LineChart,
   Line,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -20,6 +22,8 @@ import {
   Pie,
   Cell,
 } from "recharts"
+import { AddTransactionModal } from "./add-transaction-modal"
+import { Analytics } from "./analytics"
 
 interface Transaction {
   id: number
@@ -108,12 +112,7 @@ const initialTransactions: Transaction[] = [
   },
 ]
 
-const budgetData: BudgetItem[] = [
-  { name: "Payroll", allocated: 50000, spent: 45000, fill: "#3b82f6", category: "Payroll" },
-  { name: "Operations", allocated: 15000, spent: 12000, fill: "#60a5fa", category: "Operations" },
-  { name: "Technology", allocated: 10000, spent: 8500, fill: "#93c5fd", category: "Technology" },
-  { name: "Marketing", allocated: 8000, spent: 6200, fill: "#bfdbfe", category: "Marketing" },
-]
+// Removed hardcoded budgetData
 
 const monthlyData = [
   { month: "Jan", income: 15000, expenses: 12000, profit: 3000 },
@@ -136,13 +135,19 @@ const categoryBreakdown = [
 export function FinanceTracker() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [budgetData, setBudgetData] = useState<BudgetItem[]>([])
   const [filterCategory, setFilterCategory] = useState<string>("all")
+  const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false)
+  const [isBudgetEditing, setIsBudgetEditing] = useState(false)
+  const [newBudgetCategory, setNewBudgetCategory] = useState("")
+  const [newBudgetAllocation, setNewBudgetAllocation] = useState("")
 
   const fetchData = async () => {
     try {
-      const [invRes, transRes] = await Promise.all([
+      const [invRes, transRes, budgetRes] = await Promise.all([
         fetch("http://localhost:8080/api/invoices"),
-        fetch("http://localhost:8080/api/transactions")
+        fetch("http://localhost:8080/api/transactions"),
+        fetch("http://localhost:8080/api/budgets")
       ])
 
       if (invRes.ok) {
@@ -153,6 +158,19 @@ export function FinanceTracker() {
       if (transRes.ok) {
         const transData = await transRes.json()
         setTransactions(transData)
+      }
+
+      if (budgetRes.ok) {
+        const rawBudgets = await budgetRes.json()
+        // Map backend budget to frontend format
+        const formattedBudgets = rawBudgets.map((b: any, index: number) => ({
+          name: b.category,
+          category: b.category,
+          allocated: b.allocated,
+          spent: b.spent, // Backend now calculates this
+          fill: b.fill || ["#3b82f6", "#60a5fa", "#93c5fd", "#bfdbfe"][index % 4]
+        }))
+        setBudgetData(formattedBudgets)
       }
     } catch (error) {
       console.error("Error fetching finance data:", error)
@@ -225,7 +243,7 @@ export function FinanceTracker() {
           <h1 className="text-4xl font-bold text-foreground mb-2">Finance & Budget Tracker</h1>
           <p className="text-muted-foreground">Manage finances and optimize your budget.</p>
         </div>
-        <Button className="gap-2">
+        <Button className="gap-2" onClick={() => setIsTransactionModalOpen(true)}>
           <Plus className="w-4 h-4" />
           Add Transaction
         </Button>
@@ -290,16 +308,30 @@ export function FinanceTracker() {
             <Card className="p-6 bg-card border-border">
               <h2 className="text-lg font-semibold text-foreground mb-4">Monthly Trend</h2>
               <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={monthlyData}>
+                <AreaChart data={monthlyData}>
+                  <defs>
+                    <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#22c55e" stopOpacity={0.8} />
+                      <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="colorExpenses" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8} />
+                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="colorProfit" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                   <XAxis stroke="var(--muted-foreground)" dataKey="month" />
                   <YAxis stroke="var(--muted-foreground)" />
-                  <Tooltip />
+                  <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }} />
                   <Legend />
-                  <Line type="monotone" dataKey="income" stroke="var(--chart-1)" strokeWidth={2} />
-                  <Line type="monotone" dataKey="expenses" stroke="var(--chart-2)" strokeWidth={2} />
-                  <Line type="monotone" dataKey="profit" stroke="var(--chart-3)" strokeWidth={2} />
-                </LineChart>
+                  <Area type="monotone" dataKey="income" stroke="#22c55e" fillOpacity={1} fill="url(#colorIncome)" />
+                  <Area type="monotone" dataKey="expenses" stroke="#ef4444" fillOpacity={1} fill="url(#colorExpenses)" />
+                  <Area type="monotone" dataKey="profit" stroke="#3b82f6" fillOpacity={1} fill="url(#colorProfit)" />
+                </AreaChart>
               </ResponsiveContainer>
             </Card>
 
@@ -345,6 +377,53 @@ export function FinanceTracker() {
         {/* Budget Tab */}
         <TabsContent value="budget" className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Add Budget Section */}
+            <Card className="p-6 bg-card border-border flex flex-col justify-center items-center border-dashed">
+              <h3 className="text-lg font-semibold text-foreground mb-4">Add New Budget Category</h3>
+              <div className="flex gap-2 w-full">
+                <input
+                  className="flex-1 px-3 py-2 bg-muted border border-border rounded-lg"
+                  placeholder="Category Name"
+                  value={newBudgetCategory}
+                  onChange={e => setNewBudgetCategory(e.target.value)}
+                />
+                <input
+                  className="w-24 px-3 py-2 bg-muted border border-border rounded-lg"
+                  placeholder="Alloc"
+                  type="number"
+                  value={newBudgetAllocation}
+                  onChange={e => setNewBudgetAllocation(e.target.value)}
+                />
+                <Button onClick={async () => {
+                  if (!newBudgetCategory || !newBudgetAllocation) {
+                    alert("Please enter both category name and allocation amount.");
+                    return;
+                  }
+                  try {
+                    console.log("Sending budget creation request...", { category: newBudgetCategory, allocated: parseFloat(newBudgetAllocation) });
+                    const response = await fetch("http://localhost:8080/api/budgets", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ category: newBudgetCategory, allocated: parseFloat(newBudgetAllocation) })
+                    });
+
+                    if (response.ok) {
+                      console.log("Budget created successfully.");
+                      setNewBudgetCategory("");
+                      setNewBudgetAllocation("");
+                      fetchData(); // Refresh list
+                    } else {
+                      console.error("Failed to create budget:", response.status, response.statusText);
+                      alert("Failed to create budget category. Check console for details.");
+                    }
+                  } catch (error) {
+                    console.error("Error creating budget:", error);
+                    alert("Error creating budget. Check console.");
+                  }
+                }}>Add</Button>
+              </div>
+            </Card>
+
             {budgetData.map((budget) => (
               <Card key={budget.name} className="p-6 bg-card border-border">
                 <div className="flex justify-between items-start mb-4">
@@ -556,49 +635,19 @@ export function FinanceTracker() {
 
         {/* Analytics Tab */}
         <TabsContent value="analytics" className="space-y-6">
-          <Card className="p-6 bg-card border-border">
-            <h2 className="text-lg font-semibold text-foreground mb-4">Expense Breakdown by Category</h2>
-            <div className="space-y-4">
-              {categoryBreakdown.map((cat) => (
-                <div key={cat.category} className="flex items-center gap-4">
-                  <div className="w-32 text-sm font-medium text-foreground">{cat.category}</div>
-                  <div className="flex-1">
-                    <div className="w-full bg-muted rounded-full h-2">
-                      <div className="bg-primary h-2 rounded-full" style={{ width: `${cat.percentage}%` }} />
-                    </div>
-                  </div>
-                  <div className="w-24 text-right">
-                    <p className="text-sm font-semibold text-foreground">{cat.percentage}%</p>
-                    <p className="text-xs text-muted-foreground">${cat.amount.toLocaleString()}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          <Card className="p-6 bg-card border-border">
-            <h2 className="text-lg font-semibold text-foreground mb-4">Financial Summary</h2>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 bg-muted rounded">
-                <p className="text-sm text-muted-foreground mb-1">Total Income (6 months)</p>
-                <p className="text-2xl font-bold text-green-600">$110,000</p>
-              </div>
-              <div className="p-4 bg-muted rounded">
-                <p className="text-sm text-muted-foreground mb-1">Total Expenses (6 months)</p>
-                <p className="text-2xl font-bold text-red-600">$84,500</p>
-              </div>
-              <div className="p-4 bg-muted rounded">
-                <p className="text-sm text-muted-foreground mb-1">Net Profit (6 months)</p>
-                <p className="text-2xl font-bold text-blue-600">$25,500</p>
-              </div>
-              <div className="p-4 bg-muted rounded">
-                <p className="text-sm text-muted-foreground mb-1">Profit Margin</p>
-                <p className="text-2xl font-bold text-foreground">23.2%</p>
-              </div>
-            </div>
-          </Card>
+          <Analytics />
         </TabsContent>
       </Tabs>
-    </div>
+
+
+      {
+        isTransactionModalOpen && (
+          <AddTransactionModal
+            onClose={() => setIsTransactionModalOpen(false)}
+            onSuccess={fetchData}
+          />
+        )
+      }
+    </div >
   )
 }

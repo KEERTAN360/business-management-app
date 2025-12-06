@@ -4,6 +4,7 @@ import com.example.backend.model.Project;
 import com.example.backend.repository.ProjectRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.lang.NonNull;
 
 import java.util.List;
 import java.util.Optional;
@@ -18,19 +19,19 @@ public class ProjectService {
         return projectRepository.findAll();
     }
 
-    public Project createProject(Project project) {
+    public Project createProject(@NonNull Project project) {
         return projectRepository.save(project);
     }
 
-    public Optional<Project> getProjectById(Long id) {
+    public Optional<Project> getProjectById(@NonNull Long id) {
         return projectRepository.findById(id);
     }
 
-    public void deleteProject(Long id) {
+    public void deleteProject(@NonNull Long id) {
         projectRepository.deleteById(id);
     }
 
-    public Project updateProject(Long id, Project projectDetails) {
+    public Project updateProject(@NonNull Long id, @NonNull Project projectDetails) {
         return projectRepository.findById(id)
                 .map(project -> {
                     project.setName(projectDetails.getName());

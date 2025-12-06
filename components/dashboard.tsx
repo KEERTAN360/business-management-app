@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import {
   BarChart,
@@ -14,16 +15,9 @@ import {
   PieChart,
   Pie,
   Cell,
+  Legend
 } from "recharts"
-
-const dashboardData = [
-  { month: "Jan", revenue: 4000, expenses: 2400 },
-  { month: "Feb", revenue: 3000, expenses: 1398 },
-  { month: "Mar", revenue: 2000, expenses: 9800 },
-  { month: "Apr", revenue: 2780, expenses: 3908 },
-  { month: "May", revenue: 1890, expenses: 4800 },
-  { month: "Jun", revenue: 2390, expenses: 3800 },
-]
+import { format, parseISO } from "date-fns"
 
 const employeeData = [
   { name: "High Performers", value: 35, fill: "#3b82f6" },
@@ -31,7 +25,70 @@ const employeeData = [
   { name: "Needs Improvement", value: 20, fill: "#93c5fd" },
 ]
 
+type Transaction = {
+  id: number
+  description: string
+  amount: number
+  type: string // "income" | "expense"
+  category: string
+  status: string
+  date: string
+}
+
 export function Dashboard() {
+  const [transactions, setTransactions] = useState<Transaction[]>([])
+
+  useEffect(() => {
+    const fetchTransactions = async () => {
+      try {
+        const res = await fetch("http://localhost:8080/api/transactions")
+        if (res.ok) {
+          const data = await res.json()
+          setTransactions(data)
+        }
+      } catch (error) {
+        console.error("Failed to fetch transactions", error)
+      }
+    }
+    fetchTransactions()
+  }, [])
+
+  // Calculate Totals
+  const totalRevenue = transactions
+    .filter(t => t.type.toLowerCase() === "income")
+    .reduce((sum, t) => sum + t.amount, 0)
+
+  const totalExpenses = transactions
+    .filter(t => t.type.toLowerCase() === "expense")
+    .reduce((sum, t) => sum + t.amount, 0)
+
+  // Aggregate Monthly Data
+  const monthlyMap = new Map<string, { month: string; revenue: number; expenses: number }>()
+
+  transactions.forEach(t => {
+    // Assuming date is YYYY-MM-DD
+    const date = parseISO(t.date)
+    const monthKey = format(date, "MMM") // e.g. "Jan", "Feb"
+
+    if (!monthlyMap.has(monthKey)) {
+      monthlyMap.set(monthKey, { month: monthKey, revenue: 0, expenses: 0 })
+    }
+
+    const entry = monthlyMap.get(monthKey)!
+    if (t.type.toLowerCase() === "income") {
+      entry.revenue += t.amount
+    } else {
+      entry.expenses += t.amount
+    }
+  })
+
+  // Convert map to array and potentially sort by month index if needed (simplified here to random order based on data, but usually needs sorting)
+  // detailed sort:
+  const monthOrder = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+  const dashboardData = Array.from(monthlyMap.values()).sort((a, b) => {
+    return monthOrder.indexOf(a.month) - monthOrder.indexOf(b.month)
+  })
+
   return (
     <div className="p-8 space-y-8">
       <div className="flex justify-between items-start">
@@ -48,16 +105,6 @@ export function Dashboard() {
               border: "1px solid rgba(255, 255, 255, 0.2)",
               boxShadow: "0 8px 32px rgba(0, 0, 0, 0.1)",
             }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "rgba(255, 255, 255, 0.2)"
-              e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)"
-              e.currentTarget.style.boxShadow = "0 12px 40px rgba(0, 0, 0, 0.15)"
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)"
-              e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.2)"
-              e.currentTarget.style.boxShadow = "0 8px 32px rgba(0, 0, 0, 0.1)"
-            }}
           >
             Export Report
           </button>
@@ -68,16 +115,6 @@ export function Dashboard() {
               backdropFilter: "blur(10px)",
               border: "1px solid rgba(255, 255, 255, 0.2)",
               boxShadow: "0 8px 32px rgba(0, 0, 0, 0.1)",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "rgba(255, 255, 255, 0.2)"
-              e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)"
-              e.currentTarget.style.boxShadow = "0 12px 40px rgba(0, 0, 0, 0.15)"
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)"
-              e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.2)"
-              e.currentTarget.style.boxShadow = "0 8px 32px rgba(0, 0, 0, 0.1)"
             }}
           >
             Settings
@@ -90,14 +127,14 @@ export function Dashboard() {
         <Card className="p-6 bg-card border-border">
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">Total Revenue</p>
-            <p className="text-3xl font-bold text-foreground">$16,060</p>
+            <p className="text-3xl font-bold text-foreground">${totalRevenue.toLocaleString()}</p>
             <p className="text-xs text-green-600">+12.5% from last month</p>
           </div>
         </Card>
         <Card className="p-6 bg-card border-border">
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">Total Expenses</p>
-            <p className="text-3xl font-bold text-foreground">$22,706</p>
+            <p className="text-3xl font-bold text-foreground">${totalExpenses.toLocaleString()}</p>
             <p className="text-xs text-red-600">+8.2% from last month</p>
           </div>
         </Card>
@@ -124,11 +161,12 @@ export function Dashboard() {
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={dashboardData}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis stroke="var(--muted-foreground)" />
+              <XAxis dataKey="month" stroke="var(--muted-foreground)" />
               <YAxis stroke="var(--muted-foreground)" />
-              <Tooltip />
-              <Bar dataKey="revenue" fill="var(--chart-1)" />
-              <Bar dataKey="expenses" fill="var(--chart-2)" />
+              <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }} />
+              <Legend />
+              <Bar dataKey="revenue" name="Revenue" fill="#22c55e" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="expenses" name="Expenses" fill="#ef4444" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </Card>
@@ -150,7 +188,7 @@ export function Dashboard() {
                   <Cell key={`cell-${index}`} fill={entry.fill} />
                 ))}
               </Pie>
-              <Tooltip />
+              <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }} />
             </PieChart>
           </ResponsiveContainer>
         </Card>
@@ -162,11 +200,12 @@ export function Dashboard() {
         <ResponsiveContainer width="100%" height={250}>
           <LineChart data={dashboardData}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-            <XAxis stroke="var(--muted-foreground)" />
+            <XAxis dataKey="month" stroke="var(--muted-foreground)" />
             <YAxis stroke="var(--muted-foreground)" />
-            <Tooltip />
-            <Line type="monotone" dataKey="revenue" stroke="var(--chart-1)" strokeWidth={2} />
-            <Line type="monotone" dataKey="expenses" stroke="var(--chart-2)" strokeWidth={2} />
+            <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }} />
+            <Legend />
+            <Line type="monotone" dataKey="revenue" stroke="#22c55e" strokeWidth={2} dot={{ r: 4, fill: "#22c55e" }} />
+            <Line type="monotone" dataKey="expenses" stroke="#ef4444" strokeWidth={2} dot={{ r: 4, fill: "#ef4444" }} />
           </LineChart>
         </ResponsiveContainer>
       </Card>

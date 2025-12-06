@@ -4,6 +4,7 @@ import com.example.backend.model.Transaction;
 import com.example.backend.repository.TransactionRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.lang.NonNull;
 
 import java.util.List;
 
@@ -21,12 +22,12 @@ public class TransactionController {
 
     // Add POST if needed for manual creation for testing
     @PostMapping
-    public Transaction createTransaction(@RequestBody Transaction transaction) {
+    public Transaction createTransaction(@RequestBody @NonNull Transaction transaction) {
         return transactionRepository.save(transaction);
     }
 
     @DeleteMapping("/{id}")
-    public void deleteTransaction(@PathVariable Long id) {
+    public void deleteTransaction(@PathVariable @NonNull Long id) {
         transactionRepository.deleteById(id);
     }
 }
