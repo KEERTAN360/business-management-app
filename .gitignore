@@ -32,3 +32,4 @@ backend/.mvn-portable/
 *.log
 .vscode/
 .idea/
+backend/src/main/resources/application.properties
