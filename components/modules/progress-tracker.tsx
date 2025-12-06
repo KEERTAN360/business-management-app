@@ -1,9 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import React, { useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { NewProjectModal } from "./new-project-modal"
+import { EditProjectModal } from "./edit-project-modal"
 import { Plus, Trash2, Edit2, Calendar, AlertCircle, CheckCircle2 } from "lucide-react"
 import {
   BarChart,
@@ -22,14 +24,14 @@ import {
 } from "recharts"
 
 interface Milestone {
-  id: string
+  id: number
   name: string
   completed: boolean
   dueDate: string
 }
 
 interface Project {
-  id: string
+  id: number
   name: string
   progress: number
   status: "on-track" | "at-risk" | "completed"
@@ -41,72 +43,7 @@ interface Project {
   priority: "high" | "medium" | "low"
 }
 
-const initialProjects: Project[] = [
-  {
-    id: "1",
-    name: "Website Redesign",
-    progress: 75,
-    status: "on-track",
-    dueDate: "2025-02-15",
-    team: "Design",
-    description: "Complete redesign of company website with modern UI",
-    startDate: "2025-01-01",
-    priority: "high",
-    milestones: [
-      { id: "m1", name: "Design mockups", completed: true, dueDate: "2025-01-15" },
-      { id: "m2", name: "Frontend development", completed: true, dueDate: "2025-02-01" },
-      { id: "m3", name: "Testing & QA", completed: false, dueDate: "2025-02-10" },
-    ],
-  },
-  {
-    id: "2",
-    name: "Mobile App Launch",
-    progress: 45,
-    status: "at-risk",
-    dueDate: "2025-03-01",
-    team: "Development",
-    description: "Launch iOS and Android mobile applications",
-    startDate: "2024-12-01",
-    priority: "high",
-    milestones: [
-      { id: "m4", name: "Core features", completed: true, dueDate: "2025-01-20" },
-      { id: "m5", name: "Beta testing", completed: false, dueDate: "2025-02-15" },
-      { id: "m6", name: "App store submission", completed: false, dueDate: "2025-02-28" },
-    ],
-  },
-  {
-    id: "3",
-    name: "Q1 Marketing Campaign",
-    progress: 100,
-    status: "completed",
-    dueDate: "2025-01-31",
-    team: "Marketing",
-    description: "Q1 integrated marketing campaign across all channels",
-    startDate: "2024-12-15",
-    priority: "medium",
-    milestones: [
-      { id: "m7", name: "Strategy planning", completed: true, dueDate: "2024-12-20" },
-      { id: "m8", name: "Content creation", completed: true, dueDate: "2025-01-10" },
-      { id: "m9", name: "Campaign launch", completed: true, dueDate: "2025-01-31" },
-    ],
-  },
-  {
-    id: "4",
-    name: "Database Migration",
-    progress: 60,
-    status: "on-track",
-    dueDate: "2025-02-28",
-    team: "Infrastructure",
-    description: "Migrate legacy database to cloud infrastructure",
-    startDate: "2025-01-10",
-    priority: "medium",
-    milestones: [
-      { id: "m10", name: "Data audit", completed: true, dueDate: "2025-01-20" },
-      { id: "m11", name: "Migration setup", completed: true, dueDate: "2025-02-05" },
-      { id: "m12", name: "Validation & testing", completed: false, dueDate: "2025-02-25" },
-    ],
-  },
-]
+
 
 const progressTrend = [
   { week: "Week 1", avgProgress: 35, completed: 0, onTrack: 3, atRisk: 1 },
@@ -122,8 +59,29 @@ const statusDistribution = [
 ]
 
 export function ProgressTracker() {
-  const [projects, setProjects] = useState<Project[]>(initialProjects)
+  const [projects, setProjects] = useState<Project[]>([])
   const [filterStatus, setFilterStatus] = useState<"all" | "on-track" | "at-risk" | "completed">("all")
+  const [isLoading, setIsLoading] = useState(true)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [editingProject, setEditingProject] = useState<Project | null>(null)
+
+  const fetchProjects = () => {
+    setIsLoading(true)
+    fetch("http://localhost:8080/api/projects")
+      .then((res) => res.json())
+      .then((data) => {
+        setProjects(data)
+        setIsLoading(false)
+      })
+      .catch((err) => {
+        console.error("Failed to fetch projects:", err)
+        setIsLoading(false)
+      })
+  }
+
+  React.useEffect(() => {
+    fetchProjects()
+  }, [])
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -151,8 +109,11 @@ export function ProgressTracker() {
     }
   }
 
-  const removeProject = (id: string) => {
-    setProjects(projects.filter((proj) => proj.id !== id))
+  const removeProject = (id: number) => {
+    // Ideally call API to delete
+    fetch(`http://localhost:8080/api/projects/${id}`, { method: "DELETE" })
+      .then(() => setProjects(projects.filter((proj) => proj.id !== id)))
+      .catch((err) => console.error("Failed to delete project:", err))
   }
 
   const filteredProjects = filterStatus === "all" ? projects : projects.filter((p) => p.status === filterStatus)
@@ -169,7 +130,7 @@ export function ProgressTracker() {
           <h1 className="text-4xl font-bold text-foreground mb-2">Progress Tracker</h1>
           <p className="text-muted-foreground">Monitor project progress and milestones.</p>
         </div>
-        <Button className="gap-2">
+        <Button className="gap-2" onClick={() => setIsModalOpen(true)}>
           <Plus className="w-4 h-4" />
           New Project
         </Button>
@@ -251,16 +212,11 @@ export function ProgressTracker() {
                     </p>
                   </div>
                   <div className="flex gap-2">
-                    <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
-                      <Edit2 className="w-4 h-4" />
+                    <Button variant="ghost" size="icon" onClick={() => setEditingProject(project)}>
+                      <Edit2 className="w-4 h-4 text-muted-foreground" />
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeProject(project.id)}
-                      className="text-destructive hover:bg-destructive/10"
-                    >
-                      <Trash2 className="w-4 h-4" />
+                    <Button variant="ghost" size="icon" onClick={() => removeProject(project.id)}>
+                      <Trash2 className="w-4 h-4 text-destructive" />
                     </Button>
                   </div>
                 </div>
@@ -421,7 +377,28 @@ export function ProgressTracker() {
             ))}
           </div>
         </TabsContent>
+
       </Tabs>
-    </div>
+
+      {
+        isModalOpen && (
+          <NewProjectModal
+            onClose={() => setIsModalOpen(false)}
+            onSuccess={fetchProjects}
+          />
+        )
+      }
+
+      {editingProject && (
+        <EditProjectModal
+          project={editingProject}
+          onClose={() => setEditingProject(null)}
+          onSuccess={() => {
+            setEditingProject(null)
+            fetchProjects()
+          }}
+        />
+      )}
+    </div >
   )
 }

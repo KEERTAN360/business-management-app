@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import React, { useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -22,7 +22,7 @@ import {
 } from "recharts"
 
 interface Transaction {
-  id: string
+  id: number
   description: string
   amount: number
   type: "income" | "expense"
@@ -37,10 +37,11 @@ interface BudgetItem {
   spent: number
   fill: string
   category: string
+  [key: string]: any
 }
 
 interface Invoice {
-  id: string
+  id: number
   number: string
   client: string
   amount: number
@@ -48,9 +49,11 @@ interface Invoice {
   status: "paid" | "pending" | "overdue"
 }
 
+
+
 const initialTransactions: Transaction[] = [
   {
-    id: "1",
+    id: 1,
     description: "Client Payment - Project A",
     amount: 5000,
     type: "income",
@@ -59,7 +62,7 @@ const initialTransactions: Transaction[] = [
     status: "completed",
   },
   {
-    id: "2",
+    id: 2,
     description: "Office Supplies",
     amount: 250,
     type: "expense",
@@ -68,7 +71,7 @@ const initialTransactions: Transaction[] = [
     status: "completed",
   },
   {
-    id: "3",
+    id: 3,
     description: "Salary Payments",
     amount: 15000,
     type: "expense",
@@ -77,7 +80,7 @@ const initialTransactions: Transaction[] = [
     status: "completed",
   },
   {
-    id: "4",
+    id: 4,
     description: "Software License",
     amount: 500,
     type: "expense",
@@ -86,7 +89,7 @@ const initialTransactions: Transaction[] = [
     status: "completed",
   },
   {
-    id: "5",
+    id: 5,
     description: "Marketing Campaign",
     amount: 2000,
     type: "expense",
@@ -95,7 +98,7 @@ const initialTransactions: Transaction[] = [
     status: "pending",
   },
   {
-    id: "6",
+    id: 6,
     description: "Consulting Services",
     amount: 3500,
     type: "income",
@@ -121,19 +124,6 @@ const monthlyData = [
   { month: "Jun", income: 19000, expenses: 14500, profit: 4500 },
 ]
 
-const invoices: Invoice[] = [
-  { id: "inv1", number: "INV-001", client: "Acme Corp", amount: 5000, dueDate: "2025-02-15", status: "paid" },
-  { id: "inv2", number: "INV-002", client: "Tech Solutions", amount: 3500, dueDate: "2025-02-20", status: "pending" },
-  {
-    id: "inv3",
-    number: "INV-003",
-    client: "Global Industries",
-    amount: 7500,
-    dueDate: "2025-02-10",
-    status: "overdue",
-  },
-  { id: "inv4", number: "INV-004", client: "StartUp Inc", amount: 2500, dueDate: "2025-02-25", status: "pending" },
-]
 
 const categoryBreakdown = [
   { category: "Payroll", percentage: 60, amount: 45000 },
@@ -144,18 +134,83 @@ const categoryBreakdown = [
 ]
 
 export function FinanceTracker() {
-  const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions)
+  const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [invoices, setInvoices] = useState<Invoice[]>([])
   const [filterCategory, setFilterCategory] = useState<string>("all")
 
-  const totalIncome = transactions.filter((t) => t.type === "income").reduce((sum, t) => sum + t.amount, 0)
-  const totalExpenses = transactions.filter((t) => t.type === "expense").reduce((sum, t) => sum + t.amount, 0)
+  const fetchData = async () => {
+    try {
+      const [invRes, transRes] = await Promise.all([
+        fetch("http://localhost:8080/api/invoices"),
+        fetch("http://localhost:8080/api/transactions")
+      ])
+
+      if (invRes.ok) {
+        const invData = await invRes.json()
+        setInvoices(invData)
+      }
+
+      if (transRes.ok) {
+        const transData = await transRes.json()
+        setTransactions(transData)
+      }
+    } catch (error) {
+      console.error("Error fetching finance data:", error)
+    }
+  }
+
+  React.useEffect(() => {
+    fetchData()
+  }, [])
+
+  const updateInvoiceStatus = async (id: number, currentStatus: string) => {
+    const newStatus = currentStatus === "paid" ? "pending" : "paid"
+    try {
+      const response = await fetch(`http://localhost:8080/api/invoices/${id}/status`, {
+        method: "PUT",
+        headers: { "Content-Type": "text/plain" },
+        body: newStatus
+      })
+
+      if (response.ok) {
+        fetchData()
+      }
+    } catch (error) {
+      console.error("Error updating invoice status:", error)
+    }
+  }
+
+  const totalIncome = transactions.filter((t) => t.type === "income" && t.status === "completed").reduce((sum, t) => sum + t.amount, 0)
+  const totalExpenses = transactions.filter((t) => t.type === "expense" && t.status === "completed").reduce((sum, t) => sum + t.amount, 0)
   const balance = totalIncome - totalExpenses
   const totalBudgetAllocated = budgetData.reduce((sum, b) => sum + b.allocated, 0)
   const totalBudgetSpent = budgetData.reduce((sum, b) => sum + b.spent, 0)
   const budgetRemaining = totalBudgetAllocated - totalBudgetSpent
 
-  const removeTransaction = (id: string) => {
-    setTransactions(transactions.filter((t) => t.id !== id))
+  const removeTransaction = async (id: number) => {
+    try {
+      const response = await fetch(`http://localhost:8080/api/transactions/${id}`, {
+        method: "DELETE",
+      })
+      if (response.ok) {
+        fetchData()
+      }
+    } catch (error) {
+      console.error("Error deleting transaction:", error)
+    }
+  }
+
+  const removeInvoice = async (id: number) => {
+    try {
+      const response = await fetch(`http://localhost:8080/api/invoices/${id}`, {
+        method: "DELETE",
+      })
+      if (response.ok) {
+        fetchData()
+      }
+    } catch (error) {
+      console.error("Error deleting invoice:", error)
+    }
   }
 
   const filteredTransactions =
@@ -455,17 +510,33 @@ export function FinanceTracker() {
                     <h3 className="text-lg font-semibold text-foreground">{invoice.number}</h3>
                     <p className="text-sm text-muted-foreground">{invoice.client}</p>
                   </div>
-                  <span
-                    className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                      invoice.status === "paid"
-                        ? "bg-green-100 text-green-800"
-                        : invoice.status === "pending"
-                          ? "bg-yellow-100 text-yellow-800"
-                          : "bg-red-100 text-red-800"
-                    }`}
-                  >
-                    {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
-                  </span>
+                  <div className="flex gap-2">
+                    <span
+                      className={`px-2 py-1 rounded-full text-xs font-medium ${invoice.status === "paid"
+                        ? "bg-green-100 text-green-700"
+                        : invoice.status === "overdue"
+                          ? "bg-red-100 text-red-700"
+                          : "bg-yellow-100 text-yellow-700"
+                        }`}
+                    >
+                      {invoice.status}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => updateInvoiceStatus(invoice.id, invoice.status)}
+                    >
+                      {invoice.status === "paid" ? "Mark Pending" : "Mark Paid"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeInvoice(invoice.id)}
+                      className="text-destructive hover:bg-destructive/10"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="space-y-3">
